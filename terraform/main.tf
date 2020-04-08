@@ -4,6 +4,11 @@ provider "google"       {
 	project    = var.project
 }
 
+resource "google_compute_project_metadata_item" "ssh-keys" {
+  key   = "ssh-keys"
+  value = "ansible:${file(var.ssh_pub_key_file)}"
+}
+
 resource "google_compute_health_check" "l3_autohealing_health_check" {
   name                  = "l3-autohealing-health-check"
   timeout_sec           = 5
@@ -51,11 +56,12 @@ resource "google_compute_instance_template" "apache" {
   disk                  {
     source_image        = "ubuntu-minimal-1604-xenial-v20200317"
   }
+  depends_on = [google_compute_project_metadata_item.ssh-keys]
 }
 
 resource "google_compute_instance_group_manager" "igm" {
   name                  = "instance-group-manager"
-  target_pools          = [google_compute_target_pool.load_balancer.self_link]
+  target_pools          = [google_compute_target_pool.tp.self_link]
   version {
     name = "version"
     instance_template  = google_compute_instance_template.apache.self_link
@@ -85,4 +91,15 @@ resource "google_compute_forwarding_rule" "lbr" {
   target                = google_compute_target_pool.tp.self_link
   port_range            = "80"
   network_tier          = "STANDARD"
+}
+
+resource "null_resource" "ip" {
+  provisioner "local-exec" {
+    command =<<EOF
+      ips="$(gcloud compute instances list --format='value (EXTERNAL_IP)' | tr -s ' ' | cut -d ' ' -f 2 | tr '\n' ',' | sed 's/,$//')"
+      cd ../ansible
+      ansible-playbook -i $ips setup.yaml
+      EOF
+  }
+  depends_on = [google_compute_instance_group_manager.igm]
 }
