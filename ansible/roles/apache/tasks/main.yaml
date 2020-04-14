@@ -1,0 +1,14 @@
+---
+- name: Pre-installation
+  apt:
+    name: apache2
+    state: present
+    update_cache: yes
+
+- name: Copy site
+  template:
+    src: "index.html"
+    dest: "/var/www/html/index.html"
+    owner: "root"
+    group: "root"
+    mode: 0777
